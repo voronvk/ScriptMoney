@@ -1,0 +1,144 @@
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+
+local ServiceEcon = require(game.ReplicatedStorage.ServiceEcon)
+local NumberFormatter = require(game.ReplicatedStorage.FormatNumber)
+-- ========================
+-- SERVICES
+-- ======================== 
+local upgrader = script.Parent
+local prompt = upgrader:WaitForChild("ProximityPrompt")
+local billboard = upgrader:WaitForChild("BillboardGui")
+
+local textodinero = billboard.Recoger.TextLabel
+local textorecompensar = billboard.Bar.Dinero
+local barFill = billboard.Bar.BarFill
+
+-- ========================
+-- REFERENCIAS
+-- ========================
+
+local parteAnimacion = upgrader:WaitForChild("ParteAnimacionRecoger")
+local animacionInfo = TweenInfo.new(0.5)
+
+local goal = {
+	Size = Vector3.new(10, 1, 10),
+	Transparency = 1
+}
+
+local originalSize = parteAnimacion.Size
+local originalTransparency = parteAnimacion.Transparency
+
+-- ========================
+-- ANIMACIÓN
+-- ========================
+
+local GENERACION = 2
+local cobrando = {}
+
+-- ========================
+-- CONFIG
+-- ========================
+local function actualizarTexto(player)
+	local pendiente = player:GetAttribute("Pendiente") or 0
+	local pago = player:GetAttribute("Pago") or ServiceEcon.DEFAULT_PAGO
+
+	textodinero.Text = "$" .. NumberFormatter.formatNumberDecimals(pendiente)
+	textorecompensar.Text = "$" .. NumberFormatter.formatNumberDecimals(pago)
+end
+-- ========================
+-- TEXTO
+-- ========================
+local function inicializarJugador(player)
+	ServiceEcon.initPlayer(player)
+	actualizarTexto(player)
+end
+-- ========================
+-- INIT JUGADOR
+-- ========================
+local function animarBarra(duracion)
+	barFill.Size = UDim2.fromScale(0, 1)
+
+	local tween = TweenService:Create(
+		barFill,
+		TweenInfo.new(duracion, Enum.EasingStyle.Linear),
+		{ Size = UDim2.fromScale(1, 1) }
+	)
+
+	tween:Play()
+	tween.Completed:Wait()
+
+	barFill.Size = UDim2.fromScale(0, 1)
+end
+
+-- ========================
+-- BARRA
+-- ========================
+prompt.Triggered:Connect(function(player)
+	inicializarJugador(player)
+
+	if not ServiceEcon.canGenerate(player) then return end
+	ServiceEcon.startGeneration(player)
+
+	task.spawn(function()
+		animarBarra(GENERACION)
+
+		ServiceEcon.addPendiente(player)
+		ServiceEcon.finishGeneration(player)
+
+		actualizarTexto(player)
+	end)
+end)
+-- ========================
+-- GENERAR DINERO
+-- ========================
+upgrader.Touched:Connect(function(hit)
+	local character = hit.Parent
+	if not character then return end
+
+	local humanoid = character:FindFirstChildWhichIsA("Humanoid")
+	if not humanoid then return end
+
+	local player = Players:GetPlayerFromCharacter(character)
+	if not player then return end
+
+	if cobrando[player] then return end
+
+	inicializarJugador(player)
+
+	if not ServiceEcon.canCollect(player) then return end
+
+	local leaderstats = player:FindFirstChild("leaderstats")
+	local cash = leaderstats and leaderstats:FindFirstChild("Cash")
+	if not cash then return end
+
+	cobrando[player] = true
+
+	-- cobrar
+	local pendiente = ServiceEcon.collect(player)
+	cash.Value += pendiente
+
+	actualizarTexto(player)
+
+	-- animación
+	parteAnimacion.Size = originalSize
+	parteAnimacion.Transparency = originalTransparency
+
+	local tween = TweenService:Create(parteAnimacion, animacionInfo, goal)
+	tween:Play()
+
+	task.defer(function()
+		cobrando[player] = nil
+	end)
+end)
+-- ========================
+-- COBRAR DINERO + TWEEN
+-- ========================
+for _, player in ipairs(Players:GetPlayers()) do
+	inicializarJugador(player)
+end
+
+Players.PlayerAdded:Connect(inicializarJugador)
+-- ========================
+-- PLAYERS
+-- ========================
