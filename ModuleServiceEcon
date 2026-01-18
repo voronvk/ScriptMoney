@@ -1,12 +1,7 @@
 local EconomyService = {}
 
--- Valores base
 EconomyService.DEFAULT_PAGO = 5
 EconomyService.DEFAULT_PENDIENTE = 0
-
--- ========================
--- INIT JUGADOR
--- ========================
 
 function EconomyService.initPlayer(player)
 	if player:GetAttribute("Pago") == nil then
@@ -21,10 +16,6 @@ function EconomyService.initPlayer(player)
 		player:SetAttribute("Generando", false)
 	end
 end
-
--- ========================
--- GENERACIÓN
--- ========================
 
 function EconomyService.canGenerate(player)
 	return not player:GetAttribute("Generando")
@@ -44,10 +35,6 @@ function EconomyService.addPendiente(player)
 
 	player:SetAttribute("Pendiente", pendiente + pago)
 end
-
--- ========================
--- COBRO
--- ========================
 
 function EconomyService.canCollect(player)
 	local pendiente = player:GetAttribute("Pendiente") or 0
