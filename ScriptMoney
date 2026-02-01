@@ -1,115 +1,111 @@
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 
-local ServiceEcon = require(game.ReplicatedStorage.ServiceEcon)
-local NumberFormatter = require(game.ReplicatedStorage.FormatNumber)
+local Econ = require(game.ReplicatedStorage.ServiceEcon)
+local NumFmt = require(game.ReplicatedStorage.FormatNumber)
+
+local gentime = 2
+local barTinfo = TweenInfo.new(gentime, Enum.EasingStyle.Linear)
+local pickupTinfo = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
 local upgrader = script.Parent
 local prompt = upgrader:WaitForChild("ProximityPrompt")
-local billboard = upgrader:WaitForChild("BillboardGui")
+local gui = upgrader:WaitForChild("BillboardGui")
 
-local textodinero = billboard.Recoger.TextLabel
-local textorecompensar = billboard.Bar.Dinero
-local barFill = billboard.Bar.BarFill
+local txtPend = gui.Recoger.TextLabel
+local txtPago = gui.Bar.Dinero
+local barFill = gui.Bar.BarFill
 
-local parteAnimacion = upgrader:WaitForChild("ParteAnimacionRecoger")
-local animacionInfo = TweenInfo.new(0.5)
+local pickPart = upgrader:WaitForChild("ParteAnimacionRecoger")
 
-local goal = {
+local pickGoal = {
 	Size = Vector3.new(10, 1, 10),
 	Transparency = 1
 }
 
-local originalSize = parteAnimacion.Size
-local originalTransparency = parteAnimacion.Transparency
+local pickSize0 = pickPart.Size
+local pickTrans0 = pickPart.Transparency
 
-local GENERACION = 2
 local cobrando = {}
+local inited = {}
 
-local function actualizarTexto(player)
-	local pendiente = player:GetAttribute("Pendiente") or 0
-	local pago = player:GetAttribute("Pago") or ServiceEcon.DEFAULT_PAGO
+local function updateUI(plr)
+	local pend = plr:GetAttribute("Pendiente") or 0
+	local pago = plr:GetAttribute("Pago") or Econ.DEFAULT_PAGO
 
-	textodinero.Text = "$" .. NumberFormatter.formatNumberDecimals(pendiente)
-	textorecompensar.Text = "$" .. NumberFormatter.formatNumberDecimals(pago)
+	txtPend.Text = "$" .. NumFmt.formatNumberDecimals(pend)
+	txtPago.Text = "$" .. NumFmt.formatNumberDecimals(pago)
 end
 
-local function inicializarJugador(player)
-	ServiceEcon.initPlayer(player)
-	actualizarTexto(player)
+local function initPlr(plr)
+	if inited[plr] then return end
+	inited[plr] = true
+	Econ.initPlayer(plr)
+	updateUI(plr)
 end
 
-local function animarBarra(duracion)
+local function animBar()
 	barFill.Size = UDim2.fromScale(0, 1)
 
-	local tween = TweenService:Create(
-		barFill,
-		TweenInfo.new(duracion, Enum.EasingStyle.Linear),
-		{ Size = UDim2.fromScale(1, 1) }
-	)
+	local t = TweenService:Create(barFill, barTinfo, {
+		Size = UDim2.fromScale(1, 1)
+	})
 
-	tween:Play()
-	tween.Completed:Wait()
+	t:Play()
+	t.Completed:Wait()
 
 	barFill.Size = UDim2.fromScale(0, 1)
 end
 
-prompt.Triggered:Connect(function(player)
-	inicializarJugador(player)
+prompt.Triggered:Connect(function(plr)
+	initPlr(plr)
+	if not Econ.canGenerate(plr) then return end
 
-	if not ServiceEcon.canGenerate(player) then return end
-	ServiceEcon.startGeneration(player)
+	Econ.startGeneration(plr)
 
 	task.spawn(function()
-		animarBarra(GENERACION)
-
-		ServiceEcon.addPendiente(player)
-		ServiceEcon.finishGeneration(player)
-
-		actualizarTexto(player)
+		animBar()
+		Econ.addPendiente(plr)
+		Econ.finishGeneration(plr)
+		updateUI(plr)
 	end)
 end)
 
 upgrader.Touched:Connect(function(hit)
-	local character = hit.Parent
-	if not character then return end
+	local char = hit.Parent
+	if not char then return end
 
-	local humanoid = character:FindFirstChildWhichIsA("Humanoid")
-	if not humanoid then return end
+	local hum = char:FindFirstChildWhichIsA("Humanoid")
+	if not hum then return end
 
-	local player = Players:GetPlayerFromCharacter(character)
-	if not player then return end
+	local plr = Players:GetPlayerFromCharacter(char)
+	if not plr or cobrando[plr] then return end
 
-	if cobrando[player] then return end
+	initPlr(plr)
+	if not Econ.canCollect(plr) then return end
 
-	inicializarJugador(player)
-
-	if not ServiceEcon.canCollect(player) then return end
-
-	local leaderstats = player:FindFirstChild("leaderstats")
-	local cash = leaderstats and leaderstats:FindFirstChild("Cash")
+	local stats = plr:FindFirstChild("leaderstats")
+	local cash = stats and stats:FindFirstChild("Cash")
 	if not cash then return end
 
-	cobrando[player] = true
+	cobrando[plr] = true
 
-	local pendiente = ServiceEcon.collect(player)
-	cash.Value += pendiente
+	local amount = Econ.collect(plr)
+	cash.Value += amount
+	updateUI(plr)
 
-	actualizarTexto(player)
+	pickPart.Size = pickSize0
+	pickPart.Transparency = pickTrans0
 
-	parteAnimacion.Size = originalSize
-	parteAnimacion.Transparency = originalTransparency
-
-	local tween = TweenService:Create(parteAnimacion, animacionInfo, goal)
-	tween:Play()
+	TweenService:Create(pickPart, pickupTinfo, pickGoal):Play()
 
 	task.defer(function()
-		cobrando[player] = nil
+		cobrando[plr] = nil
 	end)
 end)
 
-for _, player in ipairs(Players:GetPlayers()) do
-	inicializarJugador(player)
+for _, plr in ipairs(Players:GetPlayers()) do
+	initPlr(plr)
 end
 
-Players.PlayerAdded:Connect(inicializarJugador)
+Players.PlayerAdded:Connect(initPlr)
